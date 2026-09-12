@@ -1,186 +1,290 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fa" dir="rtl">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>پنل کاربر</title>
 
-  <title>پنل کاربر</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: Tahoma, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .card {
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        padding: 40px;
+        width: 100%;
+        max-width: 600px;
+      }
+      .loading { text-align: center; color: #64748b; font-size: 18px; }
+      h1 { color: #1e293b; margin-bottom: 12px; }
+      .success-icon {
+        width: 70px; height: 70px; border-radius: 50%;
+        background: #10b981; color: #fff;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 36px; margin: 0 auto 20px;
+      }
+      .user-info {
+        background: #e0f2fe; padding: 16px;
+        border-radius: 8px; margin: 16px 0;
+        color: #0c4a6e;
+      }
+      .logout-button {
+        padding: 12px 24px; background: #dc2626; color: white;
+        border: none; border-radius: 8px; cursor: pointer;
+        font-size: 16px; font-family: inherit;
+        transition: background 0.2s;
+      }
+      .logout-button:hover { background: #b91c1c; }
+      .error { color: #dc2626; padding: 16px; text-align: center; }
+    </style>
+  </head>
 
+  <body>
+    <main class="card">
+      <div id="content" class="loading">در حال بارگذاری...</div>
+    </main>
 
-</head>
+    <!-- ============================================= -->
+    <!-- ۱. API Wrapper                                -->
+    <!-- ============================================= -->
+    <script>
+      (function () {
+        const API_BASE_URL = "http://localhost:8080";
 
-<body>
-  <main class="card">
-    <div id="content" class="loading">
-ورود موفقیت آمیز بود    </div>
-  </main>
+        window.API = {
+          BASE_URL: API_BASE_URL,
 
-  <script>
-    /*
-     * کلید توکن باید با کلیدی که در صفحه login استفاده می‌شود یکی باشد.
-     */
-    const TOKEN_KEY = "token";
+          getToken() {
+            return localStorage.getItem("token") || null;
+          },
 
-    const content = document.getElementById("content");
+          setToken(token) {
+            localStorage.setItem("token", token);
+          },
 
-    /*
-     * خروج از حساب و پاک‌کردن اطلاعات احراز هویت
-     */
-    function logout() {
-      localStorage.removeItem(TOKEN_KEY);
+          clearToken() {
+            localStorage.removeItem("token");
+          },
 
-      // پاک‌کردن Cookie معمولی authToken، در صورت وجود
-      document.cookie =
-        "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+          async requestAbsolute(url, options = {}) {
+            const token = this.getToken();
+            const method = (options.method || "GET").toUpperCase();
 
-      // اگر مسیر صفحه ورود شما login.html است، این مقدار را تغییر دهید.
-      window.location.replace("/login");
-    }
+            const headers = { ...options.headers };
 
-    /*
-     * دیکود کردن بخش Payload توکن JWT
-     */
-    function parseJwt(token) {
-      try {
-        const parts = token.split(".");
+            if (options.body && !headers["Content-Type"]) {
+              headers["Content-Type"] = "application/json";
+            }
 
-        if (parts.length !== 3) {
+            // ✅ اضافه کردن هدر Authorization
+            if (token) {
+              headers.Authorization = `Bearer ${token}`;
+            }
+
+            // 🔍 لاگ دیباگ (بعداً می‌تونید حذف کنید)
+            console.log(`🌐 ${method} ${url}`);
+            console.log(
+              "🔑 Token:",
+              token ? `${token.slice(0, 30)}...` : "❌ ندارد",
+            );
+            console.log("📋 Headers:", headers);
+
+            const response = await fetch(url, { ...options, headers });
+
+            // 401 = انقضای جلسه
+            if (response.status === 401) {
+              this.clearToken();
+              document.cookie =
+                "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+              window.location.replace("/login");
+              throw new Error("جلسه شما منقضی شده است");
+            }
+
+            if (response.status === 403) {
+              throw new Error("شما دسترسی به این بخش را ندارید");
+            }
+
+            return response;
+          },
+        };
+      })();
+    </script>
+
+    <!-- ============================================= -->
+    <!-- ۲. کد اصلی user.html                          -->
+    <!-- ============================================= -->
+    <script>
+      const TOKEN_KEY = "token";
+      const content = document.getElementById("content");
+
+      // ===== خروج =====
+      function logout() {
+        localStorage.removeItem(TOKEN_KEY);
+        document.cookie =
+          "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+        window.location.replace("/login");
+      }
+
+      // ===== دیکود JWT (نسخه اصلاح‌شده با padding و TextDecoder) =====
+      function parseJwt(token) {
+        try {
+          const parts = token.split(".");
+          if (parts.length !== 3) return null;
+
+          const base64Url = parts[1];
+          const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+
+          // ✅ اضافه کردن padding لازم
+          const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+
+          // ✅ استفاده از TextDecoder برای UTF-8 صحیح
+          const binary = atob(padded);
+          const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+          const jsonPayload = new TextDecoder("utf-8").decode(bytes);
+
+          return JSON.parse(jsonPayload);
+        } catch (error) {
+          console.error("خطا در خواندن JWT:", error);
           return null;
         }
+      }
 
-        const base64Url = parts[1];
-        const base64 = base64Url
-          .replace(/-/g, "+")
-          .replace(/_/g, "/");
+      // ===== بررسی انقضا =====
+      function isTokenExpired(token) {
+        const payload = parseJwt(token);
+        if (!payload || typeof payload.exp !== "number") return false;
+        return Date.now() >= payload.exp * 1000;
+      }
 
-        const jsonPayload = decodeURIComponent(
-          atob(base64)
-            .split("")
-            .map((character) => {
-              return "%" +
-                ("00" + character.charCodeAt(0).toString(16)).slice(-2);
-            })
-            .join("")
+      // ===== استخراج نام از JWT =====
+      function getUserDisplayName(token) {
+        const payload = parseJwt(token);
+        if (!payload) return "";
+        return (
+          payload.fullName ||
+          payload.name ||
+          payload.username ||
+          payload.sub ||
+          ""
         );
-
-        return JSON.parse(jsonPayload);
-      } catch (error) {
-        console.error("خطا در خواندن JWT:", error);
-        return null;
-      }
-    }
-
-    /*
-     * بررسی منقضی‌شدن JWT
-     */
-    function isTokenExpired(token) {
-      const payload = parseJwt(token);
-
-      /*
-       * اگر exp وجود نداشته باشد، فقط وجود توکن را معتبر در نظر می‌گیریم.
-       * اعتبارسنجی اصلی باید در بک‌اند انجام شود.
-       */
-      if (!payload || typeof payload.exp !== "number") {
-        return false;
       }
 
-      const expirationTime = payload.exp * 1000;
-
-      return Date.now() >= expirationTime;
-    }
-
-    /*
-     * استخراج نام کاربری یا نام فرد از JWT، در صورت وجود
-     */
-    function getUserDisplayName(token) {
-      const payload = parseJwt(token);
-
-      if (!payload) {
-        return "";
+      // ===== escapeHtml برای امنیت =====
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
       }
 
-      return (
-        payload.fullName ||
-        payload.name ||
-        payload.username ||
-        payload.sub ||
-        ""
-      );
-    }
+      // ===== نمایش صفحه موفقیت =====
+      function showSuccessPage(token, profile = null) {
+        const displayName = profile?.fullName || profile?.username || getUserDisplayName(token);
 
-    /*
-     * نمایش صفحه پس از ورود موفق
-     */
-    function showSuccessPage(token) {
-      const displayName = getUserDisplayName(token);
+        content.className = "";
+        content.innerHTML = `
+          <div class="success-icon">✓</div>
+          <h1>ورود موفق بود</h1>
+          <p>کاربر گرامی، با موفقیت وارد سامانه شدید.</p>
 
-      content.className = "";
+          ${
+            displayName
+              ? `<div class="user-info">
+                   نام کاربری: ${escapeHtml(displayName)}
+                 </div>`
+              : ""
+          }
 
-      content.innerHTML = `
-        <div class="success-icon">✓</div>
+          ${
+            profile
+              ? `<div class="user-info">
+                   <div><strong>نام:</strong> ${escapeHtml(profile.fullName || "---")}</div>
+                   <div><strong>نام کاربری:</strong> ${escapeHtml(profile.username || "---")}</div>
+                   <div><strong>نقش:</strong> ${escapeHtml(profile.role || "USER")}</div>
+                 </div>`
+              : ""
+          }
 
-        <h1>ورود موفق بود</h1>
+          <div class="button-group">
+            <button type="button" class="logout-button" id="logoutButton">
+              خروج از حساب
+            </button>
+          </div>
+        `;
 
-        <p>
-          کاربر گرامی، با موفقیت وارد سامانه شدید.
-        </p>
+        document
+          .getElementById("logoutButton")
+          .addEventListener("click", logout);
+      }
 
-        ${
-          displayName
-            ? `<div class="user-info">
-                 نام کاربری: ${escapeHtml(displayName)}
-               </div>`
-            : ""
+      // ===== خطا =====
+      function showError(message) {
+        content.className = "";
+        content.innerHTML = `
+          <div class="error">
+            ❌ ${escapeHtml(message)}
+          </div>
+          <div style="text-align:center; margin-top:20px;">
+            <button class="logout-button" onclick="logout()">بازگشت به لاگین</button>
+          </div>
+        `;
+      }
+
+      // ===== 🔥 درخواست به backend =====
+      async function loadProfile(token) {
+        try {
+          content.innerHTML = '<div class="loading">در حال بارگذاری...</div>';
+
+          // ⚠️ مسیر رو با بک‌اند خودتون هماهنگ کنید
+          const res = await window.API.requestAbsolute(
+            "http://localhost:8080/auth/profile",
+            { method: "GET" },
+          );
+
+          if (!res.ok) {
+            throw new Error(`خطای سرور: ${res.status}`);
+          }
+
+          const profile = await res.json();
+          console.log("✅ پروفایل دریافت شد:", profile);
+
+          showSuccessPage(token, profile);
+        } catch (error) {
+          console.error("❌ خطا در بارگذاری پروفایل:", error);
+          showError(error.message || "خطا در ارتباط با سرور");
+        }
+      }
+
+      // ===== بررسی احراز هویت =====
+      function checkAuthentication() {
+        const token = localStorage.getItem(TOKEN_KEY);
+
+        if (!token) {
+          window.location.replace("/login.html");
+          return;
         }
 
-        <div class="button-group">
-          <button
-            type="button"
-            class="logout-button"
-            id="logoutButton"
-          >
-            خروج از حساب
-          </button>
-        </div>
-      `;
+        if (isTokenExpired(token)) {
+          logout();
+          return;
+        }
 
-      document
-        .getElementById("logoutButton")
-        .addEventListener("click", logout);
-    }
-
-    /*
-     * جلوگیری از قرارگرفتن متن JWT یا نام کاربر به‌صورت HTML
-     */
-    function escapeHtml(value) {
-      return String(value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    }
-
-    /*
-     * بررسی توکن هنگام بازشدن صفحه
-     */
-    function checkAuthentication() {
-      const token = localStorage.getItem(TOKEN_KEY);
-
-      if (!token) {
-        window.location.replace("/login");
-        return;
+        // ✅ حالا واقعاً به backend درخواست می‌زنیم
+        loadProfile(token);
       }
 
-      if (isTokenExpired(token)) {
-        logout();
-        return;
-      }
-
-      showSuccessPage(token);
-    }
-
-    checkAuthentication();
-  </script>
-</body>
+      checkAuthentication();
+    </script>
+  </body>
 </html>
