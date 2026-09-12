@@ -1,290 +1,230 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fa" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>پنل کاربر</title>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>پنل کاربری</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet" />
 
-    <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body {
-        font-family: Tahoma, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
+<style>
+:root {
+  --ink: #142433;
+  --paper: #f4f7f6;
+  --teal: #1f6f5c;
+  --teal-deep: #14493c;
+  --danger: #b23b3b;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: "Vazirmatn", sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+.wrap {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.welcome {
+  font-size: 34px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--teal-deep), var(--teal));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.5px;
+}
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--ink);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+  z-index: 100;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.toast.error { background: var(--danger); }
+</style>
+</head>
+<body>
+
+  <div class="wrap">
+    <h1 class="welcome">خوش آمدید</h1>
+  </div>
+
+  <div id="toast" class="toast">
+    <span id="toastMessage"></span>
+  </div>
+
+<script>
+// ============================================================
+// API wrapper + JWT + Toast + مدیریت نشست ۲ ساعته
+// همه چیز در همین یک فایل - محتوای صفحه فقط "خوش آمدید" است.
+// ============================================================
+
+// ===== API WRAPPER =====
+(function () {
+  const API_BASE_URL = "http://localhost:8080";
+  const SERVICES = { profile: "" };
+
+  window.API = {
+    BASE_URL: API_BASE_URL,
+    SERVICES: SERVICES,
+
+    getToken() { return localStorage.getItem("token") || null; },
+    setToken(token) { localStorage.setItem("token", token); },
+    clearToken() { localStorage.removeItem("token"); },
+
+    buildUrl(service, endpoint = "") {
+      const servicePath = SERVICES[service];
+      if (servicePath === undefined) throw new Error(`سرویس ${service} تعریف نشده است`);
+      return `${API_BASE_URL}${servicePath}${endpoint}`;
+    },
+
+    async request(service, endpoint, options = {}) {
+      return this.requestAbsolute(this.buildUrl(service, endpoint), options);
+    },
+    get(service, endpoint, options = {}) {
+      return this.request(service, endpoint, { ...options, method: "GET" });
+    },
+    post(service, endpoint, body, options = {}) {
+      return this.request(service, endpoint, { ...options, method: "POST", body: JSON.stringify(body) });
+    },
+
+    async requestAbsolute(url, options = {}) {
+      const token = this.getToken();
+
+      // Authorization همیشه در header ست می‌شود اگر توکنی وجود داشته باشد
+      const headers = { "Content-Type": "application/json", ...options.headers };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const response = await fetch(url, { ...options, headers });
+      const isLoginRequest = url.endsWith("/profile/login");
+
+      if (response.status === 401 && !isLoginRequest) {
+        this.clearToken();
+        window.dispatchEvent(new CustomEvent("unauthorized"));
+        throw new Error("جلسه شما منقضی شده است");
       }
-      .card {
-        background: #fff;
-        border-radius: 16px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-        padding: 40px;
-        width: 100%;
-        max-width: 600px;
-      }
-      .loading { text-align: center; color: #64748b; font-size: 18px; }
-      h1 { color: #1e293b; margin-bottom: 12px; }
-      .success-icon {
-        width: 70px; height: 70px; border-radius: 50%;
-        background: #10b981; color: #fff;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 36px; margin: 0 auto 20px;
-      }
-      .user-info {
-        background: #e0f2fe; padding: 16px;
-        border-radius: 8px; margin: 16px 0;
-        color: #0c4a6e;
-      }
-      .logout-button {
-        padding: 12px 24px; background: #dc2626; color: white;
-        border: none; border-radius: 8px; cursor: pointer;
-        font-size: 16px; font-family: inherit;
-        transition: background 0.2s;
-      }
-      .logout-button:hover { background: #b91c1c; }
-      .error { color: #dc2626; padding: 16px; text-align: center; }
-    </style>
-  </head>
+      if (response.status === 403) throw new Error("شما دسترسی به این بخش را ندارید");
+      if (response.status === 404) throw new Error("منبع مورد نظر یافت نشد");
 
-  <body>
-    <main class="card">
-      <div id="content" class="loading">در حال بارگذاری...</div>
-    </main>
+      return response;
+    },
 
-    <!-- ============================================= -->
-    <!-- ۱. API Wrapper                                -->
-    <!-- ============================================= -->
-    <script>
-      (function () {
-        const API_BASE_URL = "http://localhost:8080";
+    profile: {
+      login: (data) => window.API.post("profile", "/login", data),
+      logout: () => window.API.post("profile", "/logout", {}),
+      getProfile: () => window.API.get("profile", "/profile"),
+    },
+  };
+})();
 
-        window.API = {
-          BASE_URL: API_BASE_URL,
+// ===== JWT parsing =====
+function parseJwt(token) {
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64).split("").map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join(""),
+    );
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.error("خطای JWT parsing:", error);
+    return null;
+  }
+}
 
-          getToken() {
-            return localStorage.getItem("token") || null;
-          },
+// ===== Toast =====
+function showToastMessage(msg, isError = false) {
+  const toast = document.getElementById("toast");
+  const toastMessage = document.getElementById("toastMessage");
+  if (!toast || !toastMessage) return;
+  toastMessage.textContent = msg;
+  toast.className = "toast show" + (isError ? " error" : "");
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => toast.classList.remove("show"), 4000);
+}
 
-          setToken(token) {
-            localStorage.setItem("token", token);
-          },
+// ===== مدیریت انقضای نشست (۲ ساعت) =====
+(function () {
+  let sessionTimer = null;
 
-          clearToken() {
-            localStorage.removeItem("token");
-          },
+  function getTokenExpiryMs(token) {
+    const payload = parseJwt(token);
+    return payload && typeof payload.exp === "number" ? payload.exp * 1000 : null;
+  }
 
-          async requestAbsolute(url, options = {}) {
-            const token = this.getToken();
-            const method = (options.method || "GET").toUpperCase();
+  function clearAuthClientSide() {
+    window.API.clearToken();
+    document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+    clearTimeout(sessionTimer);
+    ["authState", "userData", "userRole"].forEach((k) => sessionStorage.removeItem(k));
+  }
 
-            const headers = { ...options.headers };
+  // وقتی ۲ ساعت تموم بشه: اول درخواست logout به بک‌اند زده می‌شود
+  // (با Authorization که هنوز پاک نشده)، بعد کاربر به لاگین برمی‌گردد.
+  async function logoutDueToExpiry() {
+    try {
+      await window.API.profile.logout();
+    } catch (err) {
+      console.warn("⚠️ درخواست logout به بک‌اند ناموفق بود:", err);
+    }
+    clearAuthClientSide();
+    showToastMessage("⏰ مدت زمان جلسه شما به پایان رسید.", true);
+    setTimeout(() => window.location.replace("/login"), 1500);
+  }
 
-            if (options.body && !headers["Content-Type"]) {
-              headers["Content-Type"] = "application/json";
-            }
+  function startSessionTimer() {
+    clearTimeout(sessionTimer);
+    const token = window.API.getToken();
+    if (!token) return;
 
-            // ✅ اضافه کردن هدر Authorization
-            if (token) {
-              headers.Authorization = `Bearer ${token}`;
-            }
+    const expiresAt = getTokenExpiryMs(token);
+    const remaining = expiresAt ? expiresAt - Date.now() : 2 * 60 * 60 * 1000; // fallback ۲ ساعت
 
-            // 🔍 لاگ دیباگ (بعداً می‌تونید حذف کنید)
-            console.log(`🌐 ${method} ${url}`);
-            console.log(
-              "🔑 Token:",
-              token ? `${token.slice(0, 30)}...` : "❌ ندارد",
-            );
-            console.log("📋 Headers:", headers);
+    if (remaining <= 0) { logoutDueToExpiry(); return; }
+    sessionTimer = setTimeout(logoutDueToExpiry, remaining);
+  }
 
-            const response = await fetch(url, { ...options, headers });
+  if (window.API.getToken()) startSessionTimer();
 
-            // 401 = انقضای جلسه
-            if (response.status === 401) {
-              this.clearToken();
-              document.cookie =
-                "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
-              window.location.replace("/login");
-              throw new Error("جلسه شما منقضی شده است");
-            }
+  window.addEventListener("unauthorized", function () {
+    clearAuthClientSide();
+    showToastMessage("جلسه شما منقضی شد. لطفاً دوباره وارد شوید.", true);
+    setTimeout(() => window.location.replace("/login"), 1500);
+  });
 
-            if (response.status === 403) {
-              throw new Error("شما دسترسی به این بخش را ندارید");
-            }
+  console.log("✅ مدیریت نشست فعال شد (مبتنی بر exp توکن، fallback ۲ ساعت)");
+})();
 
-            return response;
-          },
-        };
-      })();
-    </script>
+// ===== ورود به پنل یوزر =====
+(function () {
+  // اگر اصلاً توکنی وجود نداشته باشد، مستقیم به لاگین برگرد
+  if (!window.API.getToken()) {
+    window.location.replace("/login");
+    return;
+  }
 
-    <!-- ============================================= -->
-    <!-- ۲. کد اصلی user.html                          -->
-    <!-- ============================================= -->
-    <script>
-      const TOKEN_KEY = "token";
-      const content = document.getElementById("content");
-
-      // ===== خروج =====
-      function logout() {
-        localStorage.removeItem(TOKEN_KEY);
-        document.cookie =
-          "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
-        window.location.replace("/login");
-      }
-
-      // ===== دیکود JWT (نسخه اصلاح‌شده با padding و TextDecoder) =====
-      function parseJwt(token) {
-        try {
-          const parts = token.split(".");
-          if (parts.length !== 3) return null;
-
-          const base64Url = parts[1];
-          const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-
-          // ✅ اضافه کردن padding لازم
-          const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-
-          // ✅ استفاده از TextDecoder برای UTF-8 صحیح
-          const binary = atob(padded);
-          const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-          const jsonPayload = new TextDecoder("utf-8").decode(bytes);
-
-          return JSON.parse(jsonPayload);
-        } catch (error) {
-          console.error("خطا در خواندن JWT:", error);
-          return null;
-        }
-      }
-
-      // ===== بررسی انقضا =====
-      function isTokenExpired(token) {
-        const payload = parseJwt(token);
-        if (!payload || typeof payload.exp !== "number") return false;
-        return Date.now() >= payload.exp * 1000;
-      }
-
-      // ===== استخراج نام از JWT =====
-      function getUserDisplayName(token) {
-        const payload = parseJwt(token);
-        if (!payload) return "";
-        return (
-          payload.fullName ||
-          payload.name ||
-          payload.username ||
-          payload.sub ||
-          ""
-        );
-      }
-
-      // ===== escapeHtml برای امنیت =====
-      function escapeHtml(value) {
-        return String(value)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
-      }
-
-      // ===== نمایش صفحه موفقیت =====
-      function showSuccessPage(token, profile = null) {
-        const displayName = profile?.fullName || profile?.username || getUserDisplayName(token);
-
-        content.className = "";
-        content.innerHTML = `
-          <div class="success-icon">✓</div>
-          <h1>ورود موفق بود</h1>
-          <p>کاربر گرامی، با موفقیت وارد سامانه شدید.</p>
-
-          ${
-            displayName
-              ? `<div class="user-info">
-                   نام کاربری: ${escapeHtml(displayName)}
-                 </div>`
-              : ""
-          }
-
-          ${
-            profile
-              ? `<div class="user-info">
-                   <div><strong>نام:</strong> ${escapeHtml(profile.fullName || "---")}</div>
-                   <div><strong>نام کاربری:</strong> ${escapeHtml(profile.username || "---")}</div>
-                   <div><strong>نقش:</strong> ${escapeHtml(profile.role || "USER")}</div>
-                 </div>`
-              : ""
-          }
-
-          <div class="button-group">
-            <button type="button" class="logout-button" id="logoutButton">
-              خروج از حساب
-            </button>
-          </div>
-        `;
-
-        document
-          .getElementById("logoutButton")
-          .addEventListener("click", logout);
-      }
-
-      // ===== خطا =====
-      function showError(message) {
-        content.className = "";
-        content.innerHTML = `
-          <div class="error">
-            ❌ ${escapeHtml(message)}
-          </div>
-          <div style="text-align:center; margin-top:20px;">
-            <button class="logout-button" onclick="logout()">بازگشت به لاگین</button>
-          </div>
-        `;
-      }
-
-      // ===== 🔥 درخواست به backend =====
-      async function loadProfile(token) {
-        try {
-          content.innerHTML = '<div class="loading">در حال بارگذاری...</div>';
-
-          // ⚠️ مسیر رو با بک‌اند خودتون هماهنگ کنید
-          const res = await window.API.requestAbsolute(
-            "http://localhost:8080/auth/profile",
-            { method: "GET" },
-          );
-
-          if (!res.ok) {
-            throw new Error(`خطای سرور: ${res.status}`);
-          }
-
-          const profile = await res.json();
-          console.log("✅ پروفایل دریافت شد:", profile);
-
-          showSuccessPage(token, profile);
-        } catch (error) {
-          console.error("❌ خطا در بارگذاری پروفایل:", error);
-          showError(error.message || "خطا در ارتباط با سرور");
-        }
-      }
-
-      // ===== بررسی احراز هویت =====
-      function checkAuthentication() {
-        const token = localStorage.getItem(TOKEN_KEY);
-
-        if (!token) {
-          window.location.replace("/login.html");
-          return;
-        }
-
-        if (isTokenExpired(token)) {
-          logout();
-          return;
-        }
-
-        // ✅ حالا واقعاً به backend درخواست می‌زنیم
-        loadProfile(token);
-      }
-
-      checkAuthentication();
-    </script>
-  </body>
+  // درخواست به بک‌اند برای تأیید معتبر بودن نشست هنگام ورود به پنل
+  // (Authorization: Bearer <token> به‌صورت خودکار در header قرار می‌گیرد)
+  window.API.profile.getProfile().catch((error) => {
+    // اگر 401 باشد، خودِ common logic بالا کاربر را به لاگین برمی‌گرداند؛
+    // بقیه خطاها (مثلاً قطعی شبکه) فقط لاگ می‌شوند، محتوای صفحه ثابت می‌ماند
+    console.warn("⚠️ خطا در تأیید نشست:", error);
+  });
+})();
+</script>
+</body>
 </html>
