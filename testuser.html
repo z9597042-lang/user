@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>پنل کاربر</title>
+
+
+</head>
+
+<body>
+  <main class="card">
+    <div id="content" class="loading">
+ورود موفقیت آمیز بود    </div>
+  </main>
+
+  <script>
+    /*
+     * کلید توکن باید با کلیدی که در صفحه login استفاده می‌شود یکی باشد.
+     */
+    const TOKEN_KEY = "authToken";
+
+    const content = document.getElementById("content");
+
+    /*
+     * خروج از حساب و پاک‌کردن اطلاعات احراز هویت
+     */
+    function logout() {
+      localStorage.removeItem(TOKEN_KEY);
+
+      // پاک‌کردن Cookie معمولی authToken، در صورت وجود
+      document.cookie =
+        "authToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+
+      // اگر مسیر صفحه ورود شما login.html است، این مقدار را تغییر دهید.
+      window.location.replace("/login");
+    }
+
+    /*
+     * دیکود کردن بخش Payload توکن JWT
+     */
+    function parseJwt(token) {
+      try {
+        const parts = token.split(".");
+
+        if (parts.length !== 3) {
+          return null;
+        }
+
+        const base64Url = parts[1];
+        const base64 = base64Url
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+
+        const jsonPayload = decodeURIComponent(
+          atob(base64)
+            .split("")
+            .map((character) => {
+              return "%" +
+                ("00" + character.charCodeAt(0).toString(16)).slice(-2);
+            })
+            .join("")
+        );
+
+        return JSON.parse(jsonPayload);
+      } catch (error) {
+        console.error("خطا در خواندن JWT:", error);
+        return null;
+      }
+    }
+
+    /*
+     * بررسی منقضی‌شدن JWT
+     */
+    function isTokenExpired(token) {
+      const payload = parseJwt(token);
+
+      /*
+       * اگر exp وجود نداشته باشد، فقط وجود توکن را معتبر در نظر می‌گیریم.
+       * اعتبارسنجی اصلی باید در بک‌اند انجام شود.
+       */
+      if (!payload || typeof payload.exp !== "number") {
+        return false;
+      }
+
+      const expirationTime = payload.exp * 1000;
+
+      return Date.now() >= expirationTime;
+    }
+
+    /*
+     * استخراج نام کاربری یا نام فرد از JWT، در صورت وجود
+     */
+    function getUserDisplayName(token) {
+      const payload = parseJwt(token);
+
+      if (!payload) {
+        return "";
+      }
+
+      return (
+        payload.fullName ||
+        payload.name ||
+        payload.username ||
+        payload.sub ||
+        ""
+      );
+    }
+
+    /*
+     * نمایش صفحه پس از ورود موفق
+     */
+    function showSuccessPage(token) {
+      const displayName = getUserDisplayName(token);
+
+      content.className = "";
+
+      content.innerHTML = `
+        <div class="success-icon">✓</div>
+
+        <h1>ورود موفق بود</h1>
+
+        <p>
+          کاربر گرامی، با موفقیت وارد سامانه شدید.
+        </p>
+
+        ${
+          displayName
+            ? `<div class="user-info">
+                 نام کاربری: ${escapeHtml(displayName)}
+               </div>`
+            : ""
+        }
+
+        <div class="button-group">
+          <button
+            type="button"
+            class="logout-button"
+            id="logoutButton"
+          >
+            خروج از حساب
+          </button>
+        </div>
+      `;
+
+      document
+        .getElementById("logoutButton")
+        .addEventListener("click", logout);
+    }
+
+    /*
+     * جلوگیری از قرارگرفتن متن JWT یا نام کاربر به‌صورت HTML
+     */
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    /*
+     * بررسی توکن هنگام بازشدن صفحه
+     */
+    function checkAuthentication() {
+      const token = localStorage.getItem(TOKEN_KEY);
+
+      if (!token) {
+        window.location.replace("/login");
+        return;
+      }
+
+      if (isTokenExpired(token)) {
+        logout();
+        return;
+      }
+
+      showSuccessPage(token);
+    }
+
+    checkAuthentication();
+  </script>
+</body>
+</html>
