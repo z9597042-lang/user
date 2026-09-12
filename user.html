@@ -19,7 +19,7 @@
     /*
      * کلید توکن باید با کلیدی که در صفحه login استفاده می‌شود یکی باشد.
      */
-    const TOKEN_KEY = "authToken";
+    const TOKEN_KEY = "token";
 
     const content = document.getElementById("content");
 
@@ -31,7 +31,7 @@
 
       // پاک‌کردن Cookie معمولی authToken، در صورت وجود
       document.cookie =
-        "authToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+        "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
 
       // اگر مسیر صفحه ورود شما login.html است، این مقدار را تغییر دهید.
       window.location.replace("/login");
