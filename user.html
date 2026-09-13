@@ -183,7 +183,7 @@ function showToastMessage(msg, isError = false) {
     }
     clearAuthClientSide();
     showToastMessage("⏰ مدت زمان جلسه شما به پایان رسید.", true);
-    setTimeout(() => window.location.replace("/login"), 1500);
+    setTimeout(() => window.location.replace("/login.html"), 1500);
   }
 
   function startSessionTimer() {
@@ -203,7 +203,7 @@ function showToastMessage(msg, isError = false) {
   window.addEventListener("unauthorized", function () {
     clearAuthClientSide();
     showToastMessage("جلسه شما منقضی شد. لطفاً دوباره وارد شوید.", true);
-    setTimeout(() => window.location.replace("/login"), 1500);
+    setTimeout(() => window.location.replace("/login.html"), 1500);
   });
 
   console.log("✅ مدیریت نشست فعال شد (مبتنی بر exp توکن، fallback ۲ ساعت)");
@@ -213,7 +213,7 @@ function showToastMessage(msg, isError = false) {
 (function () {
   // اگر اصلاً توکنی وجود نداشته باشد، مستقیم به لاگین برگرد
   if (!window.API.getToken()) {
-    window.location.replace("/login");
+    window.location.replace("/login.html");
     return;
   }
 
